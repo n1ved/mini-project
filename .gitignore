@@ -1,0 +1,11 @@
+*.pdf
+*.png
+*.jpeg
+*.jpg
+*.zip
+*.svg
+*.drawio
+*.tex
+*.csv
+*.pkl
+*.joblib
