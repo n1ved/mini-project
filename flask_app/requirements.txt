@@ -1,0 +1,12 @@
+Flask==2.3.3
+joblib
+nltk
+pandas
+scikit-learn
+tldextract
+validators
+gunicorn
+Werkzeug
+numpy
+scipy
+python-dotenv

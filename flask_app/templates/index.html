@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phishing URL Detector</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .form-container {
+            margin-top: 20px;
+        }
+        input[type="text"] {
+            width: 70%;
+            padding: 8px;
+        }
+        button {
+            padding: 8px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        #result {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            display: none;
+        }
+        .phishing {
+            color: red;
+            font-weight: bold;
+        }
+        .safe {
+            color: green;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>Phishing URL Detector</h1>
+    <p>Enter a URL to check if it's potentially a phishing site:</p>
+    
+    <div class="form-container">
+        <input type="text" id="url-input" placeholder="Enter URL (e.g., example.com)">
+        <button onclick="checkURL()">Check URL</button>
+        <button onclick="checkURLWeighted()">Advanced Check</button>
+    </div>
+    
+    <div id="result"></div>
+
+    <script>
+        function checkURL() {
+            const url = document.getElementById('url-input').value;
+            if (!url) {
+                alert('Please enter a URL');
+                return;
+            }
+            
+            fetch('/api/check-url', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ url: url }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                displayResult(data);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('result').innerHTML = 'An error occurred while checking the URL.';
+                document.getElementById('result').style.display = 'block';
+            });
+        }
+        
+        function checkURLWeighted() {
+            const url = document.getElementById('url-input').value;
+            if (!url) {
+                alert('Please enter a URL');
+                return;
+            }
+            
+            fetch('/api/check-url/weighted', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ url: url }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                displayResult(data, true);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('result').innerHTML = 'An error occurred while checking the URL.';
+                document.getElementById('result').style.display = 'block';
+            });
+        }
+        
+        function displayResult(data, weighted = false) {
+            const resultDiv = document.getElementById('result');
+            
+            if (data.error) {
+                resultDiv.innerHTML = `<p>Error: ${data.error}</p>`;
+            } else {
+                let resultHTML = '';
+                
+                if (weighted) {
+                    const isPotentiallyPhishing = data.prediction === 'bad' || data.prediction === 1;
+                    const confidencePercent = data.confidence !== null ? (data.confidence * 100).toFixed(2) : "N/A";
+                    
+                    resultHTML = `
+                        <h3>Advanced Analysis Result:</h3>
+                        <p>URL: ${data.url || document.getElementById('url-input').value}</p>
+                        <p>Verdict: <span class="${isPotentiallyPhishing ? 'phishing' : 'safe'}">
+                            ${isPotentiallyPhishing ? 'Potentially Phishing' : 'Likely Safe'}
+                        </span></p>
+                        <p>Confidence: ${confidencePercent}%</p>
+                    `;
+                } else {
+                    const isPotentiallyPhishing = Array.isArray(data.prediction) ? 
+                        data.prediction[0] === 1 : 
+                        data.prediction === 1;
+                    
+                    resultHTML = `
+                        <h3>Analysis Result:</h3>
+                        <p>URL: ${data.url}</p>
+                        <p>Verdict: <span class="${isPotentiallyPhishing ? 'phishing' : 'safe'}">
+                            ${isPotentiallyPhishing ? 'Potentially Phishing' : 'Likely Safe'}
+                        </span></p>
+                    `;
+                    
+                    if (data.confidence !== null) {
+                        resultHTML += `<p>Confidence: ${typeof data.confidence === 'number' ? data.confidence.toFixed(4) : data.confidence}</p>`;
+                    }
+                    
+                    if (data.probability !== null && data.probability !== undefined) {
+                        resultHTML += `<p>Probability: ${JSON.stringify(data.probability)}</p>`;
+                    }
+                }
+                
+                resultDiv.innerHTML = resultHTML;
+            }
+            
+            resultDiv.style.display = 'block';
+        }
+    </script>
+</body>
+</html>
