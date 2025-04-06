@@ -138,6 +138,51 @@ class PhishingURLDetector:
             'confidence': rf_percent if svm_percent is None else svm_percent,
             'prediction': ('good' if rf_percent < 0.5 else 'bad') if svm_prediction is None else ('good' if svm_prediction == 0 else 'bad')
         }
+    def predict_with_fallback(self, url: str) -> dict:
+        url_features = self.parse_url(url)
+
+        if url_features is None:
+            return {
+                'error': 'Could not parse URL',
+                'is_phishing': None,
+                'confidence': None
+            }
+
+        try:
+            # First check with SVM model
+            svm_prediction = self.svm.predict(url_features)
+            svm_decision_value = self.svm.decision_function(url_features)[0]
+            svm_probability = self.svm.predict_proba(url_features)[0] if hasattr(self.svm, 'predict_proba') else None
+
+            # If SVM predicts "good" with low confidence, check with Random Forest model
+            if svm_prediction == 'good' and (svm_decision_value is None or svm_decision_value < 0.6):
+                rf_prediction = self.rf.predict(url_features)
+                rf_probability = self.rf.predict_proba(url_features)[0] if hasattr(self.rf, 'predict_proba') else None
+                rf_decision_value = None  # Random Forest does not have decision function
+
+                return {
+                    'url': url,
+                    'prediction': rf_prediction,
+                    'probability': rf_probability,
+                    'decision_value': rf_decision_value,
+                    'model_used': 'Random Forest'
+                }
+
+            return {
+                'url': url,
+                'prediction': svm_prediction,
+                'probability': svm_probability,
+                'decision_value': svm_decision_value,
+                'model_used': 'SVM'
+            }
+
+        except Exception as e:
+            print(f"Prediction error: {e}")
+            return {
+                'error': 'Prediction failed',
+                'is_phishing': None,
+                'confidence': None
+            }
 
 # Initialize the detector
 detector = PhishingURLDetector("app/models/phishing_url_svc_model.joblib")
@@ -176,27 +221,36 @@ def predict():
         "confidence":confidence
     })
 
-@app.route('/predict/weighted', methods=['POST'])
-def predict_weighted():
-    """API endpoint that uses weighted prediction approach for more accurate phishing detection."""
+@app.route('/predict/fallback', methods=['POST'])
+def predict_fallback():
+    """API endpoint that receives a URL, extracts features, and predicts phishing status."""
+    if request.method == 'OPTIONS':
+            headers = {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'POST',
+                'Access-Control-Allow-Headers': 'Content-Type'
+            }
+            return '', 200, headers
     data = request.get_json()
     url = data.get("url")
 
     if not url or not validators.url(url):
         return jsonify({"error": "Invalid URL"}), 400
 
-    # Use the detector's weighted prediction method
-    result = detector.predict_weighted(url)
+    # Use the detector to make predictions
+    result = detector.predict_with_fallback(url)
 
     if 'error' in result and result['error']:
         return jsonify({"error": result['error']}), 500
 
-    # Determine if it's phishing based on the prediction
-    is_phishing = result['prediction'] == 'bad' or result['prediction'] == 1
-
+    # Extract prediction from the result
+    print(result)
+    prediction = result['prediction']
+    is_phishing = bool(prediction[0] if isinstance(prediction, (list, tuple)) else prediction)
+    # confidence = result['confidence']
+    # Return the result to the browser extension
     return jsonify({
         "url": url,
-        "is_phishing": is_phishing,
-        "confidence": result['confidence'],
-        "prediction": "phishing" if is_phishing else "legitimate"
+        "is_phishing": str(prediction[0]),
+        # "confidence":confidence
     })
